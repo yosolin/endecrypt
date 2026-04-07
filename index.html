@@ -205,6 +205,33 @@
     align-self: center;
   }
 
+  #hintField input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #2a2a40;
+    border-radius: 8px;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  #hintField input:focus { border-color: #5865f2; }
+
+  .hint-display {
+    display: none;
+    background: rgba(88, 101, 242, 0.1);
+    border: 1px solid #5865f2;
+    color: #7cacf8;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    margin-bottom: 16px;
+  }
+
+  .hint-display.visible { display: block; }
+
   .error {
     background: rgba(237, 66, 69, 0.1);
     border: 1px solid #ed4245;
@@ -250,6 +277,13 @@
     </div>
   </div>
 
+  <div class="field" id="hintField">
+    <label>密码提示（可选，解密失败时显示）</label>
+    <input type="text" id="hint" placeholder="例如：我的生日">
+  </div>
+
+  <div class="hint-display" id="hintDisplay"></div>
+
   <div class="error" id="error"></div>
 
   <button class="action-btn" id="actionBtn">加密</button>
@@ -286,13 +320,16 @@
   const paramCiphertext = urlParams.get('ciphertext');
   const paramPlaintext = urlParams.get('plaintext');
   const paramPassword = urlParams.get('password');
+  const paramHint = urlParams.get('hint');
   const quickDecryptMode = !!paramCiphertext;
   const quickEncryptMode = !!paramPlaintext;
+  let decryptAttempted = false;
 
   if (quickDecryptMode) {
     // Hide full UI, show minimal decrypt view
     document.querySelector('.mode-toggle').style.display = 'none';
     $('inputLabel').parentElement.style.display = 'none';
+    $('hintField').style.display = 'none';
     $('actionBtn').textContent = '解密';
     mode = 'decrypt';
     $('outputLabel').textContent = '明文';
@@ -301,6 +338,7 @@
     // Quick encrypt mode: ?plaintext=xxx&password=xxx
     document.querySelector('.mode-toggle').style.display = 'none';
     $('inputLabel').parentElement.style.display = 'none';
+    $('hintField').style.display = 'none';
     mode = 'encrypt';
     $('outputLabel').textContent = '密文';
     if (paramPassword) {
@@ -335,8 +373,11 @@
       $('input').placeholder = mode === 'encrypt' ? '输入要加密的内容...' : '粘贴 Base64 密文...';
       $('actionBtn').textContent = mode === 'encrypt' ? '加密' : '解密';
       $('outputLabel').textContent = mode === 'encrypt' ? '密文' : '明文';
+      $('hintField').style.display = mode === 'encrypt' ? '' : 'none';
+      $('hintDisplay').classList.remove('visible');
       $('outputSection').classList.remove('visible');
       $('error').classList.remove('visible');
+      $('linkSection').classList.remove('visible');
       $('input').value = '';
       $('output').value = '';
     });
@@ -426,7 +467,17 @@
         $('linkSection').classList.remove('visible');
       }
     } catch (e) {
-      showError(mode === 'encrypt' ? '加密失败: ' + e.message : '解密失败，请检查密文和密码是否正确');
+      if (mode === 'encrypt') {
+        showError('加密失败: ' + e.message);
+      } else {
+        showError('解密失败，请检查密文和密码是否正确');
+        // Show hint on first failure
+        if (!decryptAttempted && paramHint) {
+          $('hintDisplay').textContent = '密码提示：' + paramHint;
+          $('hintDisplay').classList.add('visible');
+        }
+        decryptAttempted = true;
+      }
     }
   });
 
@@ -438,7 +489,11 @@
   }
 
   function showDecryptLink(ciphertext) {
-    const link = baseUrl + '?ciphertext=' + encodeURIComponent(ciphertext);
+    let link = baseUrl + '?ciphertext=' + encodeURIComponent(ciphertext);
+    const hint = $('hint') ? $('hint').value.trim() : '';
+    if (hint) {
+      link += '&hint=' + encodeURIComponent(hint);
+    }
     $('linkOutput').value = link;
     $('linkSection').classList.add('visible');
   }
