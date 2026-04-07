@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AES-256-GCM 加解密工具</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0f0f1a;
+    color: #e0e0e0;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 40px 16px;
+  }
+
+  .container {
+    width: 100%;
+    max-width: 600px;
+  }
+
+  h1 {
+    text-align: center;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #f0f0f0;
+    margin-bottom: 8px;
+  }
+
+  .subtitle {
+    text-align: center;
+    font-size: 0.85rem;
+    color: #666;
+    margin-bottom: 32px;
+  }
+
+  .mode-toggle {
+    display: flex;
+    background: #1a1a2e;
+    border-radius: 8px;
+    padding: 4px;
+    margin-bottom: 24px;
+  }
+
+  .mode-btn {
+    flex: 1;
+    padding: 10px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #888;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .mode-btn.active {
+    background: #2d2d4a;
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  }
+
+  .field { margin-bottom: 16px; }
+
+  label {
+    display: block;
+    font-size: 0.85rem;
+    color: #999;
+    margin-bottom: 6px;
+  }
+
+  textarea {
+    width: 100%;
+    min-height: 120px;
+    padding: 12px;
+    border: 1px solid #2a2a40;
+    border-radius: 8px;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    font-size: 0.9rem;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.2s;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  }
+
+  textarea:focus { border-color: #5865f2; }
+
+  .password-wrap {
+    position: relative;
+  }
+
+  .password-wrap input {
+    width: 100%;
+    padding: 12px;
+    padding-right: 44px;
+    border: 1px solid #2a2a40;
+    border-radius: 8px;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .password-wrap input:focus { border-color: #5865f2; }
+
+  .toggle-pwd {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    font-size: 1.1rem;
+    padding: 4px;
+  }
+
+  .action-btn {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    background: #5865f2;
+    color: #fff;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background 0.2s;
+    margin-bottom: 24px;
+  }
+
+  .action-btn:hover { background: #4752c4; }
+  .action-btn:active { background: #3c45a5; }
+
+  .output-section { display: none; }
+  .output-section.visible { display: block; }
+
+  .output-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+
+  .copy-btn {
+    padding: 4px 12px;
+    border: 1px solid #2a2a40;
+    border-radius: 6px;
+    background: #1a1a2e;
+    color: #999;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .copy-btn:hover { border-color: #5865f2; color: #e0e0e0; }
+  .copy-btn.copied { border-color: #43b581; color: #43b581; }
+
+  #output {
+    width: 100%;
+    min-height: 120px;
+    padding: 12px;
+    border: 1px solid #2a2a40;
+    border-radius: 8px;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    font-size: 0.9rem;
+    resize: vertical;
+    outline: none;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    word-break: break-all;
+  }
+
+  .error {
+    background: rgba(237, 66, 69, 0.1);
+    border: 1px solid #ed4245;
+    color: #ed4245;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    margin-bottom: 16px;
+    display: none;
+  }
+
+  .error.visible { display: block; }
+
+  .info {
+    text-align: center;
+    font-size: 0.75rem;
+    color: #444;
+    margin-top: 32px;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <h1>AES-256-GCM 加解密</h1>
+  <p class="subtitle">浏览器本地运算 / 密码不会离开设备</p>
+
+  <div class="mode-toggle">
+    <button class="mode-btn active" data-mode="encrypt">加密</button>
+    <button class="mode-btn" data-mode="decrypt">解密</button>
+  </div>
+
+  <div class="field">
+    <label id="inputLabel">明文</label>
+    <textarea id="input" placeholder="输入要加密的内容..."></textarea>
+  </div>
+
+  <div class="field">
+    <label>密码</label>
+    <div class="password-wrap">
+      <input type="password" id="password" placeholder="输入密码">
+      <button class="toggle-pwd" id="togglePwd" title="显示/隐藏密码">&#128065;</button>
+    </div>
+  </div>
+
+  <div class="error" id="error"></div>
+
+  <button class="action-btn" id="actionBtn">加密</button>
+
+  <div class="output-section" id="outputSection">
+    <div class="output-header">
+      <label id="outputLabel">密文</label>
+      <button class="copy-btn" id="copyBtn">复制</button>
+    </div>
+    <textarea id="output" readonly></textarea>
+  </div>
+
+  <p class="info">AES-256-GCM + PBKDF2 (100,000 iterations) / Web Crypto API</p>
+</div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  let mode = 'encrypt';
+
+  // Mode toggle
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelector('.mode-btn.active').classList.remove('active');
+      btn.classList.add('active');
+      mode = btn.dataset.mode;
+      $('inputLabel').textContent = mode === 'encrypt' ? '明文' : '密文';
+      $('input').placeholder = mode === 'encrypt' ? '输入要加密的内容...' : '粘贴 Base64 密文...';
+      $('actionBtn').textContent = mode === 'encrypt' ? '加密' : '解密';
+      $('outputLabel').textContent = mode === 'encrypt' ? '密文' : '明文';
+      $('outputSection').classList.remove('visible');
+      $('error').classList.remove('visible');
+      $('input').value = '';
+      $('output').value = '';
+    });
+  });
+
+  // Password visibility toggle
+  $('togglePwd').addEventListener('click', () => {
+    const pwd = $('password');
+    pwd.type = pwd.type === 'password' ? 'text' : 'password';
+  });
+
+  // Derive key from password + salt
+  async function deriveKey(password, salt) {
+    const enc = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']
+    );
+    return crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    );
+  }
+
+  // Encrypt
+  async function encrypt(plaintext, password) {
+    const enc = new TextEncoder();
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const key = await deriveKey(password, salt);
+    const ciphertext = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv },
+      key,
+      enc.encode(plaintext)
+    );
+    // salt(16) + iv(12) + ciphertext
+    const buf = new Uint8Array(salt.length + iv.length + ciphertext.byteLength);
+    buf.set(salt, 0);
+    buf.set(iv, salt.length);
+    buf.set(new Uint8Array(ciphertext), salt.length + iv.length);
+    return btoa(String.fromCharCode(...buf));
+  }
+
+  // Decrypt
+  async function decrypt(base64, password) {
+    const bin = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+    const salt = bin.slice(0, 16);
+    const iv = bin.slice(16, 28);
+    const ciphertext = bin.slice(28);
+    const key = await deriveKey(password, salt);
+    const plainBuf = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv },
+      key,
+      ciphertext
+    );
+    return new TextDecoder().decode(plainBuf);
+  }
+
+  // Action
+  $('actionBtn').addEventListener('click', async () => {
+    const input = $('input').value.trim();
+    const password = $('password').value;
+    $('error').classList.remove('visible');
+
+    if (!input) {
+      showError(mode === 'encrypt' ? '请输入要加密的内容' : '请输入密文');
+      return;
+    }
+    if (!password) {
+      showError('请输入密码');
+      return;
+    }
+
+    try {
+      const result = mode === 'encrypt'
+        ? await encrypt(input, password)
+        : await decrypt(input, password);
+      $('output').value = result;
+      $('outputSection').classList.add('visible');
+    } catch (e) {
+      showError(mode === 'encrypt' ? '加密失败: ' + e.message : '解密失败，请检查密文和密码是否正确');
+    }
+  });
+
+  function showError(msg) {
+    $('error').textContent = msg;
+    $('error').classList.add('visible');
+    $('outputSection').classList.remove('visible');
+  }
+
+  // Copy
+  $('copyBtn').addEventListener('click', async () => {
+    const text = $('output').value;
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      $('copyBtn').textContent = '已复制';
+      $('copyBtn').classList.add('copied');
+      setTimeout(() => {
+        $('copyBtn').textContent = '复制';
+        $('copyBtn').classList.remove('copied');
+      }, 1500);
+    } catch {
+      $('output').select();
+      document.execCommand('copy');
+    }
+  });
+})();
+</script>
+
+</body>
+</html>
