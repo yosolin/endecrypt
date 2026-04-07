@@ -242,9 +242,25 @@
   const $ = id => document.getElementById(id);
   let mode = 'encrypt';
 
+  // Check URL params for quick-decrypt mode
+  const urlParams = new URLSearchParams(window.location.search);
+  const paramCiphertext = urlParams.get('ciphertext');
+  const quickDecryptMode = !!paramCiphertext;
+
+  if (quickDecryptMode) {
+    // Hide full UI, show minimal decrypt view
+    document.querySelector('.mode-toggle').style.display = 'none';
+    $('inputLabel').parentElement.style.display = 'none';
+    $('actionBtn').textContent = '解密';
+    mode = 'decrypt';
+    $('outputLabel').textContent = '明文';
+    $('password').focus();
+  }
+
   // Mode toggle
   document.querySelectorAll('.mode-btn').forEach(btn => {
     btn.addEventListener('click', () => {
+      if (quickDecryptMode) return;
       document.querySelector('.mode-btn.active').classList.remove('active');
       btn.classList.add('active');
       mode = btn.dataset.mode;
@@ -316,7 +332,7 @@
 
   // Action
   $('actionBtn').addEventListener('click', async () => {
-    const input = $('input').value.trim();
+    const input = quickDecryptMode ? paramCiphertext : $('input').value.trim();
     const password = $('password').value;
     $('error').classList.remove('visible');
 
@@ -363,6 +379,13 @@
       document.execCommand('copy');
     }
   });
+
+  // Allow Enter key to trigger decrypt in quick mode
+  if (quickDecryptMode) {
+    $('password').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') $('actionBtn').click();
+    });
+  }
 })();
 </script>
 
