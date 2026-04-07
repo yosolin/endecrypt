@@ -320,7 +320,6 @@
   const paramCiphertext = urlParams.get('ciphertext');
   const paramPlaintext = urlParams.get('plaintext');
   const paramPassword = urlParams.get('password');
-  const paramHint = urlParams.get('hint');
   const quickDecryptMode = !!paramCiphertext;
   const quickEncryptMode = !!paramPlaintext;
   let decryptAttempted = false;
@@ -346,7 +345,7 @@
       $('password').value = paramPassword;
       (async () => {
         try {
-          const result = await encrypt(paramPlaintext, paramPassword);
+          const result = await encrypt(paramPlaintext, paramPassword, '');
           $('output').value = result;
           $('outputSection').classList.add('visible');
           showDecryptLink(result);
@@ -406,9 +405,10 @@
     );
   }
 
-  // Encrypt
-  async function encrypt(plaintext, password) {
+  // Encrypt: output = Base64( hintLen[2] + hint[N] + salt[16] + iv[12] + ciphertext )
+  async function encrypt(plaintext, password, hint) {
     const enc = new TextEncoder();
+    const hintBytes = enc.encode(hint || '');
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const key = await deriveKey(password, salt);
@@ -417,20 +417,36 @@
       key,
       enc.encode(plaintext)
     );
-    // salt(16) + iv(12) + ciphertext
-    const buf = new Uint8Array(salt.length + iv.length + ciphertext.byteLength);
-    buf.set(salt, 0);
-    buf.set(iv, salt.length);
-    buf.set(new Uint8Array(ciphertext), salt.length + iv.length);
+    // hintLen(2) + hint(N) + salt(16) + iv(12) + ciphertext
+    const buf = new Uint8Array(2 + hintBytes.length + 16 + 12 + ciphertext.byteLength);
+    buf[0] = (hintBytes.length >> 8) & 0xff;
+    buf[1] = hintBytes.length & 0xff;
+    let offset = 2;
+    buf.set(hintBytes, offset); offset += hintBytes.length;
+    buf.set(salt, offset); offset += 16;
+    buf.set(iv, offset); offset += 12;
+    buf.set(new Uint8Array(ciphertext), offset);
     return btoa(String.fromCharCode(...buf));
   }
 
-  // Decrypt
+  // Extract hint from Base64 data (no decryption needed)
+  function extractHint(base64) {
+    try {
+      const bin = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+      const hintLen = (bin[0] << 8) | bin[1];
+      if (hintLen === 0 || hintLen + 2 + 28 > bin.length) return '';
+      return new TextDecoder().decode(bin.slice(2, 2 + hintLen));
+    } catch { return ''; }
+  }
+
+  // Decrypt: parse hintLen[2] + hint[N] + salt[16] + iv[12] + ciphertext
   async function decrypt(base64, password) {
     const bin = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-    const salt = bin.slice(0, 16);
-    const iv = bin.slice(16, 28);
-    const ciphertext = bin.slice(28);
+    const hintLen = (bin[0] << 8) | bin[1];
+    let offset = 2 + hintLen;
+    const salt = bin.slice(offset, offset + 16); offset += 16;
+    const iv = bin.slice(offset, offset + 12); offset += 12;
+    const ciphertext = bin.slice(offset);
     const key = await deriveKey(password, salt);
     const plainBuf = await crypto.subtle.decrypt(
       { name: 'AES-GCM', iv },
@@ -456,9 +472,13 @@
     }
 
     try {
-      const result = mode === 'encrypt'
-        ? await encrypt(input, password)
-        : await decrypt(input, password);
+      let result;
+      if (mode === 'encrypt') {
+        const hint = $('hint') ? $('hint').value.trim() : '';
+        result = await encrypt(input, password, hint);
+      } else {
+        result = await decrypt(input, password);
+      }
       $('output').value = result;
       $('outputSection').classList.add('visible');
       if (mode === 'encrypt') {
@@ -471,10 +491,12 @@
         showError('加密失败: ' + e.message);
       } else {
         showError('解密失败，请检查密文和密码是否正确');
-        // Show hint on first failure
-        if (!decryptAttempted && paramHint) {
-          $('hintDisplay').textContent = '密码提示：' + paramHint;
-          $('hintDisplay').classList.add('visible');
+        if (!decryptAttempted) {
+          const hint = extractHint(input);
+          if (hint) {
+            $('hintDisplay').textContent = '密码提示：' + hint;
+            $('hintDisplay').classList.add('visible');
+          }
         }
         decryptAttempted = true;
       }
@@ -489,11 +511,7 @@
   }
 
   function showDecryptLink(ciphertext) {
-    let link = baseUrl + '?ciphertext=' + encodeURIComponent(ciphertext);
-    const hint = $('hint') ? $('hint').value.trim() : '';
-    if (hint) {
-      link += '&hint=' + encodeURIComponent(hint);
-    }
+    const link = baseUrl + '?ciphertext=' + encodeURIComponent(ciphertext);
     $('linkOutput').value = link;
     $('linkSection').classList.add('visible');
   }
