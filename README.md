@@ -17,4 +17,4 @@
 
 ## 使用
 
-在线访问：https://yosolin.github.io/endecrypt.github.io/
+在线访问：https://yosolin.github.io/endecrypt/
