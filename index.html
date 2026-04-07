@@ -177,6 +177,34 @@
     word-break: break-all;
   }
 
+  .link-section { display: none; margin-top: 16px; }
+  .link-section.visible { display: block; }
+
+  .link-section label { margin-bottom: 6px; }
+
+  .link-wrap {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+  }
+
+  .link-wrap input {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1px solid #2a2a40;
+    border-radius: 8px;
+    background: #1a1a2e;
+    color: #7cacf8;
+    font-size: 0.8rem;
+    outline: none;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  }
+
+  .link-wrap .copy-btn {
+    white-space: nowrap;
+    align-self: center;
+  }
+
   .error {
     background: rgba(237, 66, 69, 0.1);
     border: 1px solid #ed4245;
@@ -218,7 +246,7 @@
     <label>密码</label>
     <div class="password-wrap">
       <input type="password" id="password" placeholder="输入密码">
-      <button class="toggle-pwd" id="togglePwd" title="显示/隐藏密码">&#128065;</button>
+      <button class="toggle-pwd" id="togglePwd" title="显示/隐藏密码">&#x1F648;</button>
     </div>
   </div>
 
@@ -234,6 +262,14 @@
     <textarea id="output" readonly></textarea>
   </div>
 
+  <div class="link-section" id="linkSection">
+    <label>解密链接</label>
+    <div class="link-wrap">
+      <input type="text" id="linkOutput" readonly>
+      <button class="copy-btn" id="copyLinkBtn">复制链接</button>
+    </div>
+  </div>
+
   <p class="info">AES-256-GCM + PBKDF2 (100,000 iterations) / Web Crypto API</p>
 </div>
 
@@ -242,10 +278,16 @@
   const $ = id => document.getElementById(id);
   let mode = 'encrypt';
 
-  // Check URL params for quick-decrypt mode
+  // Base URL for generating links
+  const baseUrl = window.location.origin + window.location.pathname;
+
+  // Check URL params
   const urlParams = new URLSearchParams(window.location.search);
   const paramCiphertext = urlParams.get('ciphertext');
+  const paramPlaintext = urlParams.get('plaintext');
+  const paramPassword = urlParams.get('password');
   const quickDecryptMode = !!paramCiphertext;
+  const quickEncryptMode = !!paramPlaintext;
 
   if (quickDecryptMode) {
     // Hide full UI, show minimal decrypt view
@@ -255,6 +297,31 @@
     mode = 'decrypt';
     $('outputLabel').textContent = '明文';
     $('password').focus();
+  } else if (quickEncryptMode) {
+    // Quick encrypt mode: ?plaintext=xxx&password=xxx
+    document.querySelector('.mode-toggle').style.display = 'none';
+    $('inputLabel').parentElement.style.display = 'none';
+    mode = 'encrypt';
+    $('outputLabel').textContent = '密文';
+    if (paramPassword) {
+      // Auto-encrypt immediately
+      $('password').value = paramPassword;
+      (async () => {
+        try {
+          const result = await encrypt(paramPlaintext, paramPassword);
+          $('output').value = result;
+          $('outputSection').classList.add('visible');
+          showDecryptLink(result);
+          $('actionBtn').style.display = 'none';
+          document.querySelector('.field:has(#password)').style.display = 'none';
+        } catch (e) {
+          showError('加密失败: ' + e.message);
+        }
+      })();
+    } else {
+      $('actionBtn').textContent = '加密';
+      $('password').focus();
+    }
   }
 
   // Mode toggle
@@ -278,7 +345,9 @@
   // Password visibility toggle
   $('togglePwd').addEventListener('click', () => {
     const pwd = $('password');
-    pwd.type = pwd.type === 'password' ? 'text' : 'password';
+    const isHidden = pwd.type === 'password';
+    pwd.type = isHidden ? 'text' : 'password';
+    $('togglePwd').textContent = isHidden ? '\u{1F441}' : '\u{1F648}';
   });
 
   // Derive key from password + salt
@@ -332,7 +401,7 @@
 
   // Action
   $('actionBtn').addEventListener('click', async () => {
-    const input = quickDecryptMode ? paramCiphertext : $('input').value.trim();
+    const input = quickDecryptMode ? paramCiphertext : quickEncryptMode ? paramPlaintext : $('input').value.trim();
     const password = $('password').value;
     $('error').classList.remove('visible');
 
@@ -351,6 +420,11 @@
         : await decrypt(input, password);
       $('output').value = result;
       $('outputSection').classList.add('visible');
+      if (mode === 'encrypt') {
+        showDecryptLink(result);
+      } else {
+        $('linkSection').classList.remove('visible');
+      }
     } catch (e) {
       showError(mode === 'encrypt' ? '加密失败: ' + e.message : '解密失败，请检查密文和密码是否正确');
     }
@@ -360,6 +434,13 @@
     $('error').textContent = msg;
     $('error').classList.add('visible');
     $('outputSection').classList.remove('visible');
+    $('linkSection').classList.remove('visible');
+  }
+
+  function showDecryptLink(ciphertext) {
+    const link = baseUrl + '?ciphertext=' + encodeURIComponent(ciphertext);
+    $('linkOutput').value = link;
+    $('linkSection').classList.add('visible');
   }
 
   // Copy
@@ -380,8 +461,26 @@
     }
   });
 
-  // Allow Enter key to trigger decrypt in quick mode
-  if (quickDecryptMode) {
+  // Copy link button
+  $('copyLinkBtn').addEventListener('click', async () => {
+    const text = $('linkOutput').value;
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      $('copyLinkBtn').textContent = '已复制';
+      $('copyLinkBtn').classList.add('copied');
+      setTimeout(() => {
+        $('copyLinkBtn').textContent = '复制链接';
+        $('copyLinkBtn').classList.remove('copied');
+      }, 1500);
+    } catch {
+      $('linkOutput').select();
+      document.execCommand('copy');
+    }
+  });
+
+  // Allow Enter key to trigger action in quick modes
+  if (quickDecryptMode || quickEncryptMode) {
     $('password').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') $('actionBtn').click();
     });
